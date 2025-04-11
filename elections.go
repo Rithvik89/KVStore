@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"sort"
 	"strings"
 	"time"
@@ -23,7 +22,7 @@ func (app *App) getChildren() []string {
 func extractSuffix(node string) string {
 	parts := strings.Split(node, "_")
 	if len(parts) > 1 {
-		return parts[1]
+		return parts[len(parts)-1]
 	}
 	return ""
 }
@@ -34,7 +33,6 @@ func (app *App) election() {
 
 	// Create a new ephemeral node for this instance
 	createPath, err := app.ZkClient.CreateProtectedEphemeralSequential(path, []byte(""), zk.WorldACL(zk.PermAll))
-	log.Println("Created node:", createPath)
 	if err != nil {
 		panic(err)
 	}
@@ -46,26 +44,23 @@ func (app *App) election() {
 			return extractSuffix(children[i]) < extractSuffix(children[j])
 		})
 
-		log.Println("Children nodes:", children)
-
 		// Check if this instance is the leader by comparing its node with the smallest node
 		if createPath == "/election/"+children[0] {
 			// This instance is the leader
 			app.IsLeader = true
 			fmt.Println("This instance is the leader")
+
+			// Register to zookeeper if not already present
+			app.RegisterMaster(createPath)
+
 			return
 		} else {
 			// This instance is not the leader
 			app.IsLeader = false
 			fmt.Println("This instance is not the leader")
 
-			// Register to zookeeper
-			workerPath := "/workers/" + extractSuffix(createPath)
-			_, err := app.ZkClient.Create(workerPath, []byte(""), zk.FlagEphemeral, zk.WorldACL(zk.PermAll))
-			if err != nil {
-				panic(err)
-			}
-			fmt.Println("Registered worker:", workerPath)
+			// Register to zookeeper if not already present
+			app.RegisterWorker(createPath)
 
 			// Watch for previous children nodes to see if they are deleted
 
@@ -87,17 +82,48 @@ func (app *App) election() {
 			select {
 			case ev := <-ch:
 				if ev.Type == zk.EventNodeDeleted {
+					fmt.Println("Predecessor node deleted, rechecking election.")
 					// Predecessor is gone, recheck election
 					continue
 				}
+			// This is to ensure that if there is some network issue and ZK is not able to send the event.
 			case <-time.After(10 * time.Second):
-				// Optional timeout to avoid getting stuck
-				fmt.Println("Timeout while waiting, rechecking election.")
-				continue
+				fmt.Println("Timeout while waiting, rechecking election....")
 			}
 			// Watch the previous node
-
 		}
 	}
 
+}
+
+func (app *App) RegisterWorker(createPath string) {
+	// Register to zookeeper if not already present
+	workerPath := "/workers/" + extractSuffix(createPath)
+	exists, _, err := app.ZkClient.Exists(workerPath)
+	if err != nil {
+		panic(err)
+	}
+	if !exists {
+		_, err := app.ZkClient.Create(workerPath, []byte(""), zk.FlagEphemeral, zk.WorldACL(zk.PermAll))
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println("Registered worker:", workerPath)
+	}
+}
+
+func (app *App) RegisterMaster(createPath string) {
+	// Register to zookeeper if not already present
+	masterPath := "/master/" + extractSuffix(createPath)
+	exists, _, err := app.ZkClient.Exists(masterPath)
+	if err != nil {
+		panic(err)
+	}
+	if !exists {
+		_, err := app.ZkClient.Create(masterPath, []byte(""), zk.FlagEphemeral, zk.WorldACL(zk.PermAll))
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println("Registered master:", masterPath)
+	}
 }
