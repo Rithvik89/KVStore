@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"kvstore/pkg/kvstore"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/apex/log"
@@ -13,11 +14,16 @@ import (
 )
 
 type App struct {
-	KvPort   int              `json:"kv_port"`
-	KvStore  kvstore.IKVStore `json:"kv_store"`
-	R        *chi.Mux         `json:"r"`
-	ZkClient *zk.Conn         `json:"zk_client"`
-	IsLeader bool             `json:"is_leader"`
+	KvPort            int              `json:"kv_port"`
+	KvStore           kvstore.IKVStore `json:"kv_store"`
+	R                 *chi.Mux         `json:"r"`
+	ZkClient          *zk.Conn         `json:"zk_client"`
+	IsLeader          bool             `json:"is_leader"`
+	WriteVersion      int32            `json:"write_version"`
+	WriteVersionMutex sync.Mutex       `json:"write_version_mutex"`
+	WriteQuorum       int32            `json:"write_quorum"`
+	ReadQuorum        int32            `json:"read_quorum"`
+	ClusterSize       int32            `json:"cluster_size"`
 }
 
 func main() {
@@ -37,16 +43,22 @@ func main() {
 
 	// Initialize the application
 	app := App{
-		KvPort:   *port,
-		R:        chi.NewRouter(),
-		ZkClient: conn,
+		KvPort:       *port,
+		R:            chi.NewRouter(),
+		ZkClient:     conn,
+		WriteVersion: 1,
 	}
 
 	// Leader elections
 	app.election()
 
+	// Initialize Cluster Metadata
+	app.initializeClusterMetadata()
+
 	// Initialize the KV store
 	app.KvStore = kvstore.NewInMemStore()
+	// Initialize the WAL LatestSuccessfulWriteVersion
+	app.WriteVersion = app.readLatestSuccessfulWriteVersion()
 
 	// Initialize the handler
 	app.R.Get("/", app.ReadRecords)
