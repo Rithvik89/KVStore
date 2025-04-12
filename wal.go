@@ -8,9 +8,11 @@ import (
 )
 
 type WAL struct {
-	Type  string `json:"type"`
-	Key   string `json:"key"`
-	Value string `json:"value"`
+	Version       int32  `json:"version"`
+	Type          string `json:"type"`
+	Key           string `json:"key"`
+	Value         string `json:"value"`
+	SuccessMarker bool   `json:"success_marker"`
 }
 
 func (app *App) writeToWAL(wal WAL) {
@@ -22,10 +24,49 @@ func (app *App) writeToWAL(wal WAL) {
 	}
 	defer file.Close()
 
+	// Increment the write version
+	app.WriteVersionMutex.Lock()
+	wal.Version = app.WriteVersion
+	app.WriteVersion++
+	app.WriteVersionMutex.Unlock()
+
+	// Set the success marker
+	wal.SuccessMarker = false
+
 	// Write the WAL entry to the file
 	err = json.NewEncoder(file).Encode(wal)
 	if err != nil {
 		log.Println("Failed to write to WAL file:", err)
 		return
 	}
+
+}
+
+func (app *App) readLatestSuccessfulWriteVersion() int32 {
+	// Open the WAL file for reading
+	file, err := os.Open(fmt.Sprintf("wal_%d.log", app.KvPort))
+	if err != nil {
+		log.Println("Failed to open WAL file:", err)
+		return 0
+	}
+	defer file.Close()
+
+	var latestVersion int32 = 1
+	var wal WAL
+
+	// Read the WAL entries from the file
+	for {
+		err = json.NewDecoder(file).Decode(&wal)
+		if err != nil {
+			break
+		}
+
+		//TODO: This should only happen if there is a success marker
+		latestVersion = wal.Version
+
+	}
+
+	log.Println("Latest successful write version:", latestVersion)
+
+	return latestVersion
 }
