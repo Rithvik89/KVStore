@@ -104,7 +104,7 @@ func (app *App) RegisterWorker(createPath string) {
 		panic(err)
 	}
 	if !exists {
-		_, err := app.ZkClient.Create(workerPath, []byte(""), zk.FlagEphemeral, zk.WorldACL(zk.PermAll))
+		_, err := app.ZkClient.Create(workerPath, []byte(fmt.Sprintf("localhost:%d", app.KvPort)), zk.FlagEphemeral, zk.WorldACL(zk.PermAll))
 		if err != nil {
 			panic(err)
 		}
