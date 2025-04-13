@@ -64,6 +64,7 @@ func main() {
 	app.R.Get("/", app.ReadRecords)
 	app.R.Post("/", app.WriteRecord)
 	app.R.Delete("/", app.DeleteRecord)
+	app.R.Post("/replicate", app.ReplicateRecord)
 
 	err = http.ListenAndServe(fmt.Sprintf(":%d", app.KvPort), app.R)
 
