@@ -1,29 +1,20 @@
-# 🚀 KV Store – v1.0 Release Changelog
+# 🗃️ Distributed Key-Value Store
 
-## ✅ Core Features
+A distributed in-memory key-value store. It supports **master-based writes**, **read/write quorums**, **write-ahead logging**, and **read replicas** to ensure durability and availability.
 
-### 🧠 Master-Slave Architecture
-- Master node handles `/put` and `/delete`
-- Followers handle `/get`
+## ✨ Features
 
-### 🔐 Strong Consistency
-- Achieved using **quorum-based reads and writes**
+- 🧠 **Strong Consistency** via master-coordinated write quorum.
+- 🧾 **Write-Ahead Log (WAL)** to ensure durability and replay on recovery.
+- 🔁 **Read Replicas** for load-balanced and quorum-based reads.
+- 🔒 **Conflict Resolution** using log index versioning and resync mechanism.
+- ⚙️  **Quorum Configurable**: Tunable read (`R`) and write (`W`) quorum settings.
+- 🧠 **Background Snapshotting** to persist the current in-memory state.
+- 🔄 **Replica Sync Jobs** to identify and heal WAL gaps and drift.
+- 📊 **In-Memory Store** for low-latency reads and writes.
+- 💥 **Fault Tolerance**: Supports replica resyncs and partial failures.
 
-### 🔄 gRPC-Based Replication
-- Master node sends WAL entries to followers via gRPC for writes
 
-### 🎯 Load Balancing
-- Load balancer routes:
-  - **Writes** to master
-  - **Reads** via **round-robin** among replicas
 
-### ⚡ On-the-Fly Replica Addition
-- Add new replicas at runtime with **no downtime**
 
-### 📝 Write-Ahead Log (WAL)
-- All writes go to a persistent WAL before application
-- Guarantees durability and crash recovery
 
-### 🔄 WAL Version Sync
-- Followers detect WAL mismatches
-- Call a **sync API** on master to reconcile
