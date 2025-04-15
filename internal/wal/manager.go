@@ -5,14 +5,16 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sync"
 
 	"github.com/go-zookeeper/zk"
 )
 
 type WALManager struct {
-	KvPort       int      `json:"kv_port"`
-	ZkClient     *zk.Conn `json:"zk_client"`
-	WriteVersion int      `json:"write_version"`
+	KvPort            int        `json:"kv_port"`
+	ZkClient          *zk.Conn   `json:"zk_client"`
+	WriteVersion      int        `json:"write_version"`
+	WriteVersionMutex sync.Mutex `json:"write_version_mutex"`
 }
 
 func NewWALManager(kv_port int, zkClient *zk.Conn) *WALManager {

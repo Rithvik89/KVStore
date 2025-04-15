@@ -43,6 +43,7 @@ func main() {
 
 	// Initialize the application
 	app := App{
+		Handler:            chi.NewRouter(),
 		ElectionManager:    elections.NewElectionManager(*port, conn),
 		ClusterManager:     cluster.NewClusterManager(*port, conn),
 		ReplicationManager: replication.NewReplicationManager(*port, conn),
@@ -56,7 +57,10 @@ func main() {
 	// Initialize Cluster Metadata
 	app.ClusterManager.InitializeClusterMetadata()
 
-	err = http.ListenAndServe(fmt.Sprintf(":%d", *port), nil)
+	// Initialize Handler
+	app.InitializeHandler()
+
+	err = http.ListenAndServe(fmt.Sprintf(":%d", *port), app.Handler)
 
 	if err != nil {
 		log.Errorf("Failed to start server: %v", err)
