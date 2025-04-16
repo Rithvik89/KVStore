@@ -21,15 +21,8 @@ func (app *App) WriteRecord(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if app.ElectionManager.IsLeader {
-		// TODO: this logic need to be moved out from here to wal manager
-		// handler should be clean
-		app.WALManager.WriteVersionMutex.Lock()
-		version := app.WALManager.WriteVersion
-		app.WALManager.WriteVersion++
-		app.WALManager.WriteVersionMutex.Unlock()
-
-		_, err := app.WALManager.WriteToWAL(wal.WAL{
-			Version:       version,
+		// Write the value to the WAL
+		version, err := app.WALManager.WALWriter(wal.WAL{
 			Type:          "PUT",
 			Key:           body.Key,
 			Value:         body.Value,
@@ -42,25 +35,28 @@ func (app *App) WriteRecord(rw http.ResponseWriter, r *http.Request) {
 		}
 
 		// Replicate WAL to followers
-		// If acknowledged by more than half of the followers
-		// Commit the WAL entry and set the value in the KV store
-		// Else rollback the WAL entry
-
-		if !app.ReplicationManager.WriteToWorkers("PUT", body.Key, body.Value, app.WALManager.WriteVersion) {
-			// unable to get ack for this WAL entry
-			// rollback the WAL entry
-			//TODO: visulaize what happens in not all the replicas ack the write
-			// app.rollbackWAL(body.Key, body.Value)
+		err = app.ReplicationManager.WALReplicationToWorkers("PUT", body.Key, body.Value, version)
+		if err != nil {
+			// These false WAL entries will be cleaned up during compaction
+			http.Error(rw, "Failed to replicate WAL to workers", http.StatusInternalServerError)
+			return
 		}
 
-		//TODO: Send the Commit to the replicas
-		// err = app.CommitToWorkers("PUT",body.Key, body.Value, version)
+		// Commit the transaction to workers after acknowledgment has been recieved
+		// Here we write the SuccessMarker in the WAL as true
+		// And write these into worker Inmem store
+		// TODO: Seems, there might be hard cases here. Please do check them..
+		err = app.ReplicationManager.CommitTxnToWorkers("PUT", body.Key, body.Value, version)
+		if err != nil {
+			http.Error(rw, "Failed to commit transaction to workers", http.StatusInternalServerError)
+			return
+		}
 
-		// err := app.KvStore.Put(body.Key, body.Value)
-		// if err != nil {
-		// 	http.Error(rw, "Failed to put value", http.StatusInternalServerError)
-		// 	return
-		// }
+		err = app.StoreManager.Store.Put(body.Key, body.Value)
+		if err != nil {
+			http.Error(rw, "Failed to put value", http.StatusInternalServerError)
+			return
+		}
 
 		rw.WriteHeader(http.StatusOK)
 		return
