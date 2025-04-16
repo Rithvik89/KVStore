@@ -3,6 +3,7 @@ package replication
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"kvstore/internal/cluster"
 	"kvstore/internal/wal"
 	"log"
@@ -27,10 +28,7 @@ func NewReplicationManager(kvPort int, zkClient *zk.Conn) *ReplicationManager {
 	}
 }
 
-// TODO: Rename this function to something more meaningful
-func (rm *ReplicationManager) WriteToWorkers(opType string, key string, value string, version int) bool {
-	// Create a new WriteRecordBody struct
-
+func (rm *ReplicationManager) WALReplicationToWorkers(opType string, key string, value string, version int) error {
 	body := wal.WAL{
 		Version: version,
 		Type:    opType,
@@ -38,21 +36,17 @@ func (rm *ReplicationManager) WriteToWorkers(opType string, key string, value st
 		Value:   value,
 	}
 
-	// Marshal the body into JSON
 	bodyJson, err := json.Marshal(body)
 	if err != nil {
 		log.Println("Failed to marshal body:", err)
-		// TODO: Is this way of hadling error correct?
-		return false
+		return err
 	}
 
 	workers, _, err := rm.ZkClient.Children("/workers")
 	if err != nil {
 		log.Println("Failed to get workers:", err)
-		return false
+		return err
 	}
-
-	// Send the JSON to all followers
 
 	wg := sync.WaitGroup{}
 	successCount := int32(0)
@@ -68,7 +62,7 @@ func (rm *ReplicationManager) WriteToWorkers(opType string, key string, value st
 				return
 			}
 			workerAddress := string(workerData)
-			resp, err := http.Post("http://"+workerAddress+"/replica/", "application/json", bytes.NewBuffer(bodyJson))
+			resp, err := http.Post("http://"+workerAddress+"/api/v1/replicate/", "application/json", bytes.NewBuffer(bodyJson))
 			if err != nil {
 				log.Println("Failed to send replication request:", err)
 				return
@@ -86,14 +80,13 @@ func (rm *ReplicationManager) WriteToWorkers(opType string, key string, value st
 	wg.Wait()
 
 	if successCount < rm.ClusterManager.WriteQuorum {
-		log.Println("Failed to replicate to enough workers")
-		return false
+		return fmt.Errorf("failed to replicate to enough workers: %d/%d", successCount, rm.ClusterManager.WriteQuorum)
 	}
 
-	return true
+	return nil
 }
 
-func (rm *ReplicationManager) CommitToWorkers(opType string, key string, value string, version int) error {
+func (rm *ReplicationManager) CommitTxnToWorkers(opType string, key string, value string, version int) error {
 	// Create a new WriteRecordBody struct
 	body := wal.WAL{
 		Type:    opType,
