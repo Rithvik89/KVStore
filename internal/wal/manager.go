@@ -33,7 +33,7 @@ type WAL struct {
 	SuccessMarker bool   `json:"success_marker"`
 }
 
-func (wm *WALManager) WriteToWAL(wal WAL) (int, error) {
+func (wm *WALManager) WALWriter(wal WAL) (int, error) {
 	// Open the WAL file for appending
 	file, err := os.OpenFile(fmt.Sprintf("wal_%d.log", wm.KvPort), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
@@ -42,22 +42,22 @@ func (wm *WALManager) WriteToWAL(wal WAL) (int, error) {
 	}
 	defer file.Close()
 
-	// Check for conflicts
-	// Get the last successful write version from Zookeeper
+	// Increment the write version
+	wm.WriteVersionMutex.Lock()
+	wal.Version = wm.WriteVersion
+	wm.WriteVersion++
+	wm.WriteVersionMutex.Unlock()
 
-	latestVersion := readLatestSuccessfulWriteVersionFromWAL(wm.KvPort)
-	latestSuccessfulVersion, err := wm.readLastestSuccessfulWriteVersionFromZK()
+	// Check for conflicts
+	conflictDetected, err := wm.isConflictDetected()
 	if err != nil {
-		log.Println("Failed to get latest successful write version from Zookeeper:", err)
+		log.Println("Error while checking for conflicts:", err)
 		return -1, err
 	}
-
-	if latestSuccessfulVersion != latestVersion {
-		// Conflict detected
-		log.Println("Conflict detected: latest successful version from Zookeeper does not match WAL version")
-		//TODO: Conflict resolution logic can be added here
-		return -1, fmt.Errorf("conflict detected: latest successful version from Zookeeper does not match WAL version")
-
+	if conflictDetected {
+		log.Println("Conflict detected: WAL entry not written")
+		//TODO: add conflict resolution logic here
+		return -1, fmt.Errorf("conflict detected: WAL entry not written")
 	}
 
 	// Write the WAL entry to the file
@@ -67,6 +67,21 @@ func (wm *WALManager) WriteToWAL(wal WAL) (int, error) {
 		return -1, err
 	}
 	return wal.Version, nil
+}
+
+func (wm *WALManager) isConflictDetected() (bool, error) {
+	latestVersion := readLatestSuccessfulWriteVersionFromWAL(wm.KvPort)
+	latestSuccessfulVersion, err := readLastestSuccessfulWriteVersionFromZK(wm.ZkClient)
+	if err != nil {
+		log.Println("Failed to get latest successful write version from Zookeeper:", err)
+		return false, err
+	}
+	if latestSuccessfulVersion != latestVersion {
+		// Conflict detected
+		log.Println("Conflict detected: latest successful version from Zookeeper does not match WAL version")
+		return true, nil
+	}
+	return false, nil
 }
 
 func readLatestSuccessfulWriteVersionFromWAL(KvPort int) int {
@@ -93,11 +108,11 @@ func readLatestSuccessfulWriteVersionFromWAL(KvPort int) int {
 	return latestVersion
 }
 
-func (wm *WALManager) readLastestSuccessfulWriteVersionFromZK() (int, error) {
+func readLastestSuccessfulWriteVersionFromZK(ZkClient *zk.Conn) (int, error) {
 	path := "/version"
 	var latestVersion int
 	// Get the latest successful write version from Zookeeper
-	data, _, err := wm.ZkClient.Get(path)
+	data, _, err := ZkClient.Get(path)
 	if err != nil {
 		log.Println("Failed to get latest successful write version from Zookeeper:", err)
 		return -1, err
