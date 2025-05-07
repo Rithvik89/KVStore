@@ -21,14 +21,14 @@ func (app *App) WriteRecord(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if app.ElectionManager.IsLeader {
-		// Write the value to the WAL
+		
+		// 2PC Prepare Phase
 		version, err := app.WALManager.WALWriter(wal.WAL{
 			Type:          "PUT",
 			Key:           body.Key,
 			Value:         body.Value,
 			SuccessMarker: false,
 		})
-
 		if err != nil {
 			http.Error(rw, "Failed to write to WAL", http.StatusInternalServerError)
 			return
@@ -42,10 +42,8 @@ func (app *App) WriteRecord(rw http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Commit the transaction to workers after acknowledgment has been recieved
-		// Here we write the SuccessMarker in the WAL as true
-		// And write these into worker Inmem store
-		// TODO: Seems, there might be hard cases here. Please do check them..
+		// 2PC Commit Phase
+		
 		err = app.ReplicationManager.CommitTxnToWorkers("PUT", body.Key, body.Value, version)
 		if err != nil {
 			http.Error(rw, "Failed to commit transaction to workers", http.StatusInternalServerError)
