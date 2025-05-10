@@ -43,16 +43,22 @@ func main() {
 
 	// Initialize the application
 	app := App{
-		Handler:            chi.NewRouter(),
-		ElectionManager:    elections.NewElectionManager(*port, conn),
-		ClusterManager:     cluster.NewClusterManager(*port, conn),
-		ReplicationManager: replication.NewReplicationManager(*port, conn),
-		WALManager:         wal.NewWALManager(*port, conn),
-		StoreManager:       store.NewStoreManager(),
+		Handler:        chi.NewRouter(),
+		ClusterManager: cluster.NewClusterManager(*port, conn),
+		StoreManager:   store.NewStoreManager(),
 	}
 
-	// Leader elections
+	app.ElectionManager = elections.NewElectionManager(*port, conn)
+	fmt.Println("Election Manager initialized")
 	app.ElectionManager.Election()
+
+	// Intialize WAL manager
+	app.WALManager = wal.NewWALManager(*port, conn)
+	fmt.Println("WAL Manager initialized")
+
+	// Initialize Replication Manager
+	app.ReplicationManager = replication.NewReplicationManager(*port, conn, app.WALManager, app.ClusterManager)
+	fmt.Println("Replication Manager initialized")
 
 	// Initialize Cluster Metadata
 	app.ClusterManager.InitializeClusterMetadata()
@@ -60,6 +66,8 @@ func main() {
 	// Initialize Handler
 	app.InitializeHandler()
 
+	fmt.Println("KV Store is running on port:", *port)
+	
 	err = http.ListenAndServe(fmt.Sprintf(":%d", *port), app.Handler)
 
 	if err != nil {
