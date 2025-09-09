@@ -62,10 +62,12 @@ func (cm *ClusterManager) InitializeClusterMetadata() {
 		panic(err)
 	}
 
-	for ev := range ch {
-		if ev.Type == zk.EventNodeChildrenChanged {
-			fmt.Println("Cluster size changed, resetting cluster details")
-			updateClusterDetails()
+	go func() {
+		for ev := range ch {
+			if ev.Type == zk.EventNodeChildrenChanged {
+				fmt.Println("Cluster size changed, resetting cluster details")
+				updateClusterDetails()
+			}
 		}
-	}
+	}()
 }

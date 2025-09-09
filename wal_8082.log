@@ -1,0 +1,2 @@
+{"version":1,"type":"PUT","key":"test","value":"hello world","success_marker":false}
+{"version":4,"type":"PUT","key":"name","value":"KVStore","success_marker":false}
