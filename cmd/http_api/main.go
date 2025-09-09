@@ -57,7 +57,7 @@ func main() {
 	fmt.Println("WAL Manager initialized")
 
 	// Initialize Replication Manager
-	app.ReplicationManager = replication.NewReplicationManager(*port, conn, app.WALManager, app.ClusterManager)
+	app.ReplicationManager = replication.NewReplicationManager(*port, conn)
 	fmt.Println("Replication Manager initialized")
 
 	// Initialize Cluster Metadata
